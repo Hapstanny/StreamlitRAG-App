@@ -8,7 +8,7 @@ A production-ready **Retrieval-Augmented Generation (RAG)** chat application bui
 
 ## 📸 App Preview
 
-![RAG Chat Assistant Interface](./StreamlitRAG-App/App%20Pic/AppPic.jpg)
+![RAG Chat Assistant Interface](./appImage/appImage.jpg)
 
 *The RAG Chat Assistant provides an intuitive interface for document-based question answering with real-time response evaluation.*
 
