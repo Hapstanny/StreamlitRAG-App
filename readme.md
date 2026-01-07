@@ -6,6 +6,12 @@ A production-ready **Retrieval-Augmented Generation (RAG)** chat application bui
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)
 ![Azure](https://img.shields.io/badge/Azure-AI%20Services-0078D4.svg)
 
+## 📸 App Preview
+
+![RAG Chat Assistant Interface](./StreamlitRAG-App/App%20Pic/AppPic.jpg)
+
+*The RAG Chat Assistant provides an intuitive interface for document-based question answering with real-time response evaluation.*
+
 ## ✨ Features
 
 ### Core Capabilities

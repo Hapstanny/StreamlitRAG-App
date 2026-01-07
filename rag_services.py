@@ -27,6 +27,25 @@ _ai_project_client = None
 _ai_foundry_openai_client = None
 _trace_id_counter = 0
 
+
+def _get_credential(tenant_id: Optional[str] = None):
+    """Return an Azure credential, preferring Azure CLI when available.
+
+    Falls back to DefaultAzureCredential if Azure CLI is not installed or not logged in.
+    """
+    try:
+        if tenant_id:
+            return AzureCliCredential(tenant_id=tenant_id)
+        return AzureCliCredential()
+    except Exception as cli_err:
+        logger.warning(f"AzureCliCredential unavailable ({cli_err}); falling back to DefaultAzureCredential")
+        try:
+            return DefaultAzureCredential()
+        except Exception as default_err:
+            logger.error(f"DefaultAzureCredential failed: {default_err}")
+            raise
+
+
 # Application name for tracing - this appears in AI Foundry portal
 RAG_APP_NAME = "RAG-Chat-Assistant"
 SERVICE_NAME = "rag-chat-service"
@@ -98,11 +117,8 @@ def _setup_ai_foundry_tracing(endpoint: str, tenant_id: str = None, app_insights
         # Per docs: OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
         os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] = "true"
         
-        # Use CLI credential with tenant if specified
-        if tenant_id:
-            credential = AzureCliCredential(tenant_id=tenant_id)
-        else:
-            credential = DefaultAzureCredential()
+        # Prefer Azure CLI credential, fallback to DefaultAzureCredential
+        credential = _get_credential(tenant_id)
         
         # Create AI Project client using endpoint (for telemetry)
         _ai_project_client = AIProjectClient(
@@ -698,12 +714,9 @@ class EmbeddingClient:
     def __init__(self, config: ConfigManager):
         self.config = config
         
-        # Use AAD auth with AzureCliCredential for AI Foundry
+        # Use AAD auth with credential fallback for AI Foundry
         # AIProjectInstrumentor (if enabled) will automatically add gen_ai.* attributes
-        if config.azure_tenant_id:
-            credential = AzureCliCredential(tenant_id=config.azure_tenant_id)
-        else:
-            credential = DefaultAzureCredential()
+        credential = _get_credential(config.azure_tenant_id)
         
         self.client = AzureOpenAI(
             azure_endpoint=config.openai_endpoint,
@@ -791,15 +804,8 @@ class CosmosDBClient:
     def __init__(self, config: ConfigManager):
         self.config = config
         if config.cosmos_use_aad:
-            # Use tenant_id if specified to target the correct Azure account
-            cred_kwargs = {}
-            if config.azure_tenant_id:
-                cred_kwargs["additionally_allowed_tenants"] = ["*"]
-                cred_kwargs["exclude_shared_token_cache_credential"] = True
-                from azure.identity import AzureCliCredential
-                credential = AzureCliCredential(tenant_id=config.azure_tenant_id)
-            else:
-                credential = DefaultAzureCredential()
+            # Use tenant_id if specified to target the correct Azure account with fallback
+            credential = _get_credential(config.azure_tenant_id)
             self.client = CosmosClient(config.cosmos_endpoint, credential)
         else:
             self.client = CosmosClient(config.cosmos_endpoint, config.cosmos_key)
@@ -888,12 +894,9 @@ class OpenAIClient:
     def __init__(self, config: ConfigManager):
         self.config = config
         
-        # Use AAD auth with AzureCliCredential for AI Foundry
+        # Use AAD auth with credential fallback for AI Foundry
         # AIProjectInstrumentor (if enabled) will automatically add gen_ai.* attributes
-        if config.azure_tenant_id:
-            credential = AzureCliCredential(tenant_id=config.azure_tenant_id)
-        else:
-            credential = DefaultAzureCredential()
+        credential = _get_credential(config.azure_tenant_id)
         
         self.client = AzureOpenAI(
             azure_endpoint=config.openai_endpoint,
@@ -1043,23 +1046,15 @@ class EvaluationService:
             
             if self.config:
                 # Create model configuration for evaluators
-                # Use the same Azure OpenAI endpoint for evaluation
+                # Use the same Azure OpenAI endpoint for evaluation with credential fallback
+                credential = _get_credential(self.config.azure_tenant_id)
+                
                 self._model_config = AzureOpenAIModelConfiguration(
                     azure_endpoint=self.config.openai_endpoint,
                     azure_deployment=self.config.default_deployment,
                     api_version=self.config.openai_api_version,
-                    # Use AAD auth via AzureCliCredential
+                    credential=credential,
                 )
-                
-                # Add credential if using tenant-specific auth
-                if self.config.azure_tenant_id:
-                    credential = AzureCliCredential(tenant_id=self.config.azure_tenant_id)
-                    self._model_config = AzureOpenAIModelConfiguration(
-                        azure_endpoint=self.config.openai_endpoint,
-                        azure_deployment=self.config.default_deployment,
-                        api_version=self.config.openai_api_version,
-                        credential=credential,
-                    )
                 
                 # Initialize evaluators with model configuration
                 self._relevance_evaluator = RelevanceEvaluator(model_config=self._model_config)
